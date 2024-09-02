@@ -3,6 +3,7 @@
 
 use core::{
     borrow::Borrow,
+    cmp::Ordering,
     fmt,
     hash::{Hash, Hasher},
     iter::FusedIterator,
@@ -41,7 +42,8 @@ pub struct ArchivedIndexMap<K, V, H = FxHasher64> {
 }
 
 impl<K, V, H> ArchivedIndexMap<K, V, H> {
-    fn entries(&self) -> &[Entry<K, V>] {
+    /// Constructs a new, empty `ArchivedIndexMap`.
+    pub fn entries(&self) -> &[Entry<K, V>] {
         unsafe { from_raw_parts(self.entries.as_ptr(), self.len()) }
     }
 
@@ -90,6 +92,39 @@ impl<K, V, H> ArchivedIndexMap<K, V, H> {
 }
 
 impl<K, V, H: Hasher + Default> ArchivedIndexMap<K, V, H> {
+    /// Search over a sorted map with a comparator function.
+    ///
+    /// Returns the position where that value is present, or the position where it can be inserted
+    /// to maintain the sort. See [`slice::binary_search_by`] for more details.
+    ///
+    /// Computes in **O(log(n))** time.
+    pub fn binary_search_by<F>(&self, mut f: F) -> Result<usize, usize>
+    where
+        F: FnMut(&K, &V) -> Ordering,
+    {
+        self.entries()
+            .binary_search_by(|entry| f(&entry.key, &entry.value))
+    }
+
+    /// Search over a sorted map with an extraction function.
+    ///
+    /// Returns the position where that value is present, or the position where it can be inserted
+    /// to maintain the sort. See [`slice::binary_search_by_key`] for more details.
+    ///
+    /// Computes in **O(log(n))** time.
+    pub fn binary_search_by_key<B, F>(
+        &self,
+        b: &B,
+        mut f: F,
+    ) -> Result<usize, usize>
+    where
+        F: FnMut(&K, &V) -> B,
+        B: Ord,
+    {
+        self.entries()
+            .binary_search_by_key(b, |entry| f(&entry.key, &entry.value))
+    }
+
     /// Gets the index, key, and value corresponding to the supplied key using
     /// the given comparison function.
     pub fn get_full_with<Q, C>(
@@ -381,14 +416,16 @@ where
 
 impl<K: Eq, V: Eq, H> Eq for ArchivedIndexMap<K, V, H> {}
 
-struct RawIter<'a, K, V> {
+/// An iterator over the key-value pairs of an index map.
+pub struct RawIter<'a, K, V> {
     current: *const Entry<K, V>,
     remaining: usize,
     _phantom: PhantomData<(&'a K, &'a V)>,
 }
 
 impl<'a, K, V> RawIter<'a, K, V> {
-    fn new(pairs: *const Entry<K, V>, len: usize) -> Self {
+    /// Constructs a new raw iterator from a pointer to the first pair and the
+    pub fn new(pairs: *const Entry<K, V>, len: usize) -> Self {
         Self {
             current: pairs,
             remaining: len,
@@ -416,6 +453,26 @@ impl<'a, K, V> Iterator for RawIter<'a, K, V> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.remaining, Some(self.remaining))
+    }
+}
+
+impl<'a, K, V> DoubleEndedIterator for RawIter<'a, K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if self.remaining == 0 {
+                None
+            } else {
+                self.remaining -= 1;
+                let entry = &*self.current.add(self.remaining);
+                Some((&entry.key, &entry.value))
+            }
+        }
+    }
+}
+
+impl<K, V> DoubleEndedIterator for Iter<'_, K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back()
     }
 }
 
