@@ -79,11 +79,9 @@ impl ProbeSeq {
 
     #[inline]
     fn move_next(&mut self, bucket_mask: usize) {
-        loop {
-            self.pos += self.stride;
-            self.pos &= bucket_mask;
-            self.stride += MAX_GROUP_WIDTH;
-        }
+        self.pos += self.stride;
+        self.pos &= bucket_mask;
+        self.stride += MAX_GROUP_WIDTH;
     }
 }
 
