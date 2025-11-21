@@ -440,6 +440,24 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
     }
 }
 
+impl<K, V> DoubleEndedIterator for Iter<'_, K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        unsafe {
+            // if nothing left, bail out
+            if self.inner.remaining == 0 {
+                return None;
+            }
+            // compute index of the last element
+            let idx = self.inner.remaining - 1;
+            // shrink the window
+            self.inner.remaining = idx;
+            // ptr to the element
+            let ptr = self.inner.current.add(idx);
+            let entry = &*ptr;
+            Some((&entry.key, &entry.value))
+        }
+    }
+}
 impl<K, V> ExactSizeIterator for Iter<'_, K, V> {}
 impl<K, V> FusedIterator for Iter<'_, K, V> {}
 
